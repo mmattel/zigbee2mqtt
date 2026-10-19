@@ -569,8 +569,7 @@ export class HomeAssistant extends Extension {
         this.eventBus.onGroupMembersChanged(this, this.onGroupMembersChanged);
         this.eventBus.onDeviceAnnounce(this, this.onZigbeeEvent);
         this.eventBus.onDeviceJoined(this, this.onZigbeeEvent);
-        // TODO: this is triggering for any `data.status`?
-        this.eventBus.onDeviceInterview(this, this.onZigbeeEvent);
+        this.eventBus.onDeviceInterview(this, this.onDeviceInterview);
         this.eventBus.onDeviceMessage(this, this.onZigbeeEvent);
         this.eventBus.onScenesChanged(this, this.onScenesChanged);
         this.eventBus.onEntityOptionsChanged(this, async (data) => await this.discover(data.entity));
@@ -2125,6 +2124,16 @@ export class HomeAssistant extends Extension {
     @bind async onZigbeeEvent(data: {device: Device}): Promise<void> {
         if (!this.getDiscovered(data.device).discovered) {
             await this.discover(data.device);
+        }
+    }
+
+    @bind async onDeviceInterview(data: eventdata.DeviceInterview): Promise<void> {
+        if (data.status === "successful") {
+            // A re-interview can change what the discovery payloads carry (e.g. `sw_version` after a firmware update),
+            // also for a device that is already discovered. `discover()` only publishes the payloads that changed.
+            await this.discover(data.device);
+        } else {
+            await this.onZigbeeEvent(data);
         }
     }
 

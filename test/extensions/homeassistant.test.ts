@@ -2255,6 +2255,62 @@ describe("Extension: HomeAssistant", () => {
         });
     });
 
+    it("Should rediscover a device with a changed software build ID after a successful interview", async () => {
+        const device = devices.WSDCGQ11LM;
+        const softwareBuildID = device.softwareBuildID;
+        const configured = device.meta.configured;
+        // Already configured, so the interview doesn't trigger a configure (which would rediscover as well).
+        device.meta.configured = (getZ2MEntity(device) as Device).definition!.version;
+        device.softwareBuildID = "2.0.0";
+
+        try {
+            mockMQTTPublishAsync.mockClear();
+            await mockZHEvents.deviceInterview({device, status: "successful"});
+            await flushPromises();
+            expect(mockMQTTPublishAsync).toHaveBeenCalledWith(
+                "homeassistant/sensor/0x0017880104e45522/temperature/config",
+                expect.stringContaining('"sw_version":"2.0.0"'),
+                {retain: true, qos: 1},
+            );
+
+            // Nothing changed since, so nothing is published again.
+            mockMQTTPublishAsync.mockClear();
+            await mockZHEvents.deviceInterview({device, status: "successful"});
+            await flushPromises();
+            expect(mockMQTTPublishAsync).not.toHaveBeenCalledWith(
+                "homeassistant/sensor/0x0017880104e45522/temperature/config",
+                expect.any(String),
+                expect.any(Object),
+            );
+        } finally {
+            device.softwareBuildID = softwareBuildID;
+            device.meta.configured = configured;
+        }
+    });
+
+    it("Shouldnt rediscover an already discovered device when an interview starts or fails", async () => {
+        const device = devices.WSDCGQ11LM;
+        const softwareBuildID = device.softwareBuildID;
+        const configured = device.meta.configured;
+        device.meta.configured = (getZ2MEntity(device) as Device).definition!.version;
+        device.softwareBuildID = "2.0.0";
+
+        try {
+            mockMQTTPublishAsync.mockClear();
+            await mockZHEvents.deviceInterview({device, status: "started"});
+            await mockZHEvents.deviceInterview({device, status: "failed"});
+            await flushPromises();
+            expect(mockMQTTPublishAsync).not.toHaveBeenCalledWith(
+                "homeassistant/sensor/0x0017880104e45522/temperature/config",
+                expect.any(String),
+                expect.any(Object),
+            );
+        } finally {
+            device.softwareBuildID = softwareBuildID;
+            device.meta.configured = configured;
+        }
+    });
+
     it("Shouldnt discover when device leaves", async () => {
         // @ts-expect-error private
         extension.discovered = {};
